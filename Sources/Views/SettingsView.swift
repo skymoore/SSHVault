@@ -31,6 +31,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     displaySection
+                    agentSection
                     terminalSection
                     environmentSection
                     availabilitySection
@@ -112,6 +113,38 @@ struct SettingsView: View {
                     .font(.system(size: 12))
                     .foregroundColor(t.foreground)
                     .toggleStyle(.switch)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 9).fill(t.surface.opacity(0.6)))
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(t.secondary.opacity(0.15), lineWidth: 0.5))
+        }
+    }
+
+    // MARK: - Agent Section
+
+    private var agentSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("SSH AGENT")
+
+            VStack(spacing: 8) {
+                Text("SSHVault checks SSH_AUTH_SOCK, gpg-agent, and ~/.gnupg automatically. Set a custom socket path to override.")
+                    .font(.system(size: 11))
+                    .foregroundColor(t.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack {
+                    Text("Socket Path")
+                        .font(.system(size: 12))
+                        .foregroundColor(t.secondary)
+                        .frame(width: 100, alignment: .trailing)
+                    TextField("~/.gnupg/S.gpg-agent.ssh", text: $prefs.customAgentSocket)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                    if !prefs.customAgentSocket.isEmpty {
+                        Button("Clear") { prefs.customAgentSocket = "" }
+                            .font(.system(size: 11))
+                    }
+                }
             }
             .padding(12)
             .background(RoundedRectangle(cornerRadius: 9).fill(t.surface.opacity(0.6)))

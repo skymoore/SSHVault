@@ -14,6 +14,8 @@ struct KeyManagementView: View {
     @State private var generationResult: String?
     @State private var copiedKeyID: String?
     @State private var agentRunning: Bool = false
+    @State private var agentSocket: String? = nil
+    @State private var agentOnlyKeys: [AgentKeyInfo] = []
 
     private let keyService = SSHKeyService.shared
     private var t: AppTheme { tm.current }
@@ -47,16 +49,28 @@ struct KeyManagementView: View {
                 Circle()
                     .fill(agentRunning ? t.green : t.secondary.opacity(0.4))
                     .frame(width: 7, height: 7)
-                Text(agentRunning ? "ssh-agent running" : "ssh-agent not detected")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(agentRunning ? t.green : t.secondary)
+                if agentRunning, let sock = agentSocket {
+                    let label = keyService.agentLabel(for: sock)
+                    Text(label)
+                        .font(.system(size: 10.5))
+                        .foregroundColor(t.green)
+                    Text(sock)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(t.secondary.opacity(0.5))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("No SSH agent detected")
+                        .font(.system(size: 10.5))
+                        .foregroundColor(t.secondary)
+                }
                 Spacer()
                 if agentRunning {
-                    let loadedCount = keys.filter(\.isLoadedInAgent).count
-                    Text("\(loadedCount) loaded")
+                    let totalInAgent = keys.filter(\.isLoadedInAgent).count + agentOnlyKeys.count
+                    Text("\(totalInAgent) loaded")
                         .font(.system(size: 10.5))
                         .foregroundColor(t.secondary.opacity(0.7))
-                    if loadedCount > 0 {
+                    if totalInAgent > 0 {
                         Button {
                             _ = keyService.removeAllKeysFromAgent()
                             refreshKeys()
@@ -73,12 +87,24 @@ struct KeyManagementView: View {
 
             Rectangle().fill(t.secondary.opacity(0.2)).frame(height: 0.5)
 
-            if keys.isEmpty {
+            if keys.isEmpty && agentOnlyKeys.isEmpty {
                 emptyState
             } else {
                 ScrollView {
-                    VStack(spacing: 8) {
-                        ForEach(keys) { key in keyCard(key) }
+                    VStack(spacing: 16) {
+                        if !agentOnlyKeys.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                agentOnlySectionHeader
+                                VStack(spacing: 8) {
+                                    ForEach(agentOnlyKeys) { key in agentOnlyKeyCard(key) }
+                                }
+                            }
+                        }
+                        if !keys.isEmpty {
+                            VStack(spacing: 8) {
+                                ForEach(keys) { key in keyCard(key) }
+                            }
+                        }
                     }.padding(16)
                 }
             }
@@ -89,11 +115,11 @@ struct KeyManagementView: View {
                 Text("~/.ssh/").font(.system(size: 10.5, design: .monospaced)).foregroundColor(t.secondary.opacity(0.6))
                 Spacer()
                 if agentRunning {
-                    let agentCount = keys.filter(\.isLoadedInAgent).count
-                    Text("\(agentCount) in agent /")
+                    let totalInAgent = keys.filter(\.isLoadedInAgent).count + agentOnlyKeys.count
+                    Text("\(totalInAgent) in agent /")
                         .font(.system(size: 10.5)).foregroundColor(t.secondary.opacity(0.7))
                 }
-                Text("\(keys.count) key\(keys.count == 1 ? "" : "s")")
+                Text("\(keys.count) file key\(keys.count == 1 ? "" : "s")")
                     .font(.system(size: 10.5)).foregroundColor(t.secondary.opacity(0.7))
             }.padding(.horizontal, 16).padding(.vertical, 6)
         }
@@ -103,6 +129,90 @@ struct KeyManagementView: View {
         .alert("Key Generated", isPresented: .init(
             get: { generationResult != nil }, set: { if !$0 { generationResult = nil } }
         )) { Button("OK") { generationResult = nil } } message: { Text(generationResult ?? "") }
+    }
+
+    // MARK: - Agent-Only Section
+
+    private var agentOnlySectionHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "creditcard")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(t.cyan)
+            Text("HARDWARE / SMARTCARD KEYS")
+                .font(.system(size: 10.5, weight: .bold))
+                .foregroundColor(t.cyan)
+                .tracking(0.6)
+            Rectangle()
+                .fill(t.cyan.opacity(0.2))
+                .frame(height: 0.5)
+        }
+    }
+
+    private func agentOnlyKeyCard(_ key: AgentKeyInfo) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(t.cyan.opacity(0.12)).frame(width: 34, height: 34)
+                Image(systemName: "creditcard").font(.system(size: 13, weight: .medium)).foregroundColor(t.cyan)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(key.comment.isEmpty ? key.fingerprint : key.comment)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundColor(t.foreground)
+                    .lineLimit(1)
+                Text(key.fingerprint)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(t.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+            Spacer()
+            Text("\(key.bits)")
+                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .foregroundColor(t.secondary.opacity(0.6))
+            Text(key.keyType.uppercased())
+                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .foregroundColor(t.cyan)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Capsule().fill(t.cyan.opacity(0.1)))
+                .overlay(Capsule().strokeBorder(t.cyan.opacity(0.2), lineWidth: 0.5))
+            Text("In Agent")
+                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .foregroundColor(t.green)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(Capsule().fill(t.green.opacity(0.1)))
+                .overlay(Capsule().strokeBorder(t.green.opacity(0.2), lineWidth: 0.5))
+            if key.publicKey != nil {
+                Button {
+                    copyAgentPublicKey(key)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: copiedKeyID == key.id ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 10))
+                        Text(copiedKeyID == key.id ? "Copied!" : "Copy Pub")
+                            .font(.system(size: 10.5, weight: .medium))
+                    }
+                    .foregroundColor(copiedKeyID == key.id ? t.green : t.accent)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(
+                        copiedKeyID == key.id ? t.green.opacity(0.12) : t.accent.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 9).fill(t.surface.opacity(0.6)))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(t.cyan.opacity(0.2), lineWidth: 0.5))
+    }
+
+    private func copyAgentPublicKey(_ key: AgentKeyInfo) {
+        guard let pub = key.publicKey else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(pub, forType: .string)
+        copiedKeyID = key.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if copiedKeyID == key.id { copiedKeyID = nil }
+        }
     }
 
     // MARK: - Empty State
@@ -266,7 +376,9 @@ struct KeyManagementView: View {
     }
 
     private func refreshKeys() {
-        agentRunning = keyService.isAgentRunning()
-        keys = keyService.listKeys()
+        agentSocket  = keyService.resolveAgentSocket()
+        agentRunning = agentSocket != nil
+        keys         = keyService.listKeys()
+        agentOnlyKeys = agentRunning ? keyService.listAgentOnlyKeys(fileKeys: keys) : []
     }
 }
