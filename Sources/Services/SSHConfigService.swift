@@ -80,6 +80,63 @@ final class SSHConfigService: ObservableObject {
         }
     }
 
+    func duplicateHost(_ host: SSHHost) {
+        // Generate a unique alias: "alias-2", "alias-3", ...
+        let existingAliases = Set(hosts.map { $0.host })
+        var newAlias = "\(host.host)-2"
+        var counter = 3
+        while existingAliases.contains(newAlias) {
+            newAlias = "\(host.host)-\(counter)"
+            counter += 1
+        }
+
+        let duplicate = SSHHost(
+            id:           UUID(),
+            host:         newAlias,
+            label:        host.label,
+            hostName:     host.hostName,
+            user:         host.user,
+            port:         host.port,
+            identityFile: host.identityFile,
+            proxyJump:    host.proxyJump,
+            forwardAgent: host.forwardAgent,
+            icon:         host.icon,
+            sftpPath:     host.sftpPath,
+            sshInitPath:  host.sshInitPath,
+            extraOptions: host.extraOptions,
+            comment:      host.comment
+        )
+
+        // Insert right after the original in the hosts list
+        if let idx = hosts.firstIndex(where: { $0.id == host.id }) {
+            hosts.insert(duplicate, at: hosts.index(after: idx))
+        } else {
+            hosts.append(duplicate)
+        }
+
+        // Copy group membership
+        for i in groups.indices {
+            if groups[i].hostIDs.contains(host.host) {
+                groups[i].hostIDs.append(newAlias)
+            }
+        }
+
+        // Copy terminal/env overrides if any
+        let prefs = TerminalPreferences.shared
+        if let override = prefs.hostOverrides[host.host] {
+            prefs.setOverride(
+                for:        newAlias,
+                terminal:   override.terminal,
+                customPath: override.customAppPath,
+                envMode:    override.envMode,
+                envVars:    override.envVars
+            )
+        }
+
+        save()
+        saveGroups()
+    }
+
     func deleteHost(_ host: SSHHost) {
         hosts.removeAll { $0.id == host.id }
         // Remove from groups too

@@ -32,6 +32,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     displaySection
                     terminalSection
+                    environmentSection
                     availabilitySection
                     themeSection
                 }
@@ -152,6 +153,28 @@ struct SettingsView: View {
                             .font(.system(size: 12))
                     }
                 }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 9).fill(t.surface.opacity(0.6)))
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(t.secondary.opacity(0.15), lineWidth: 0.5))
+        }
+    }
+
+    // MARK: - Environment Section
+
+    private var environmentSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("ENVIRONMENT")
+
+            VStack(spacing: 8) {
+                Text("Injected into every terminal launched by SSHVault. Per-host overrides are configured in the host editor.")
+                    .font(.system(size: 11))
+                    .foregroundColor(t.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                EnvVarEditorView(entries: $prefs.globalEnvVars, onSave: {
+                    prefs.saveGlobalEnvVars()
+                })
             }
             .padding(12)
             .background(RoundedRectangle(cornerRadius: 9).fill(t.surface.opacity(0.6)))

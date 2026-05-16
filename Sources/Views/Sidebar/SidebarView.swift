@@ -267,6 +267,7 @@ struct SidebarView: View {
                     }
                 }
                 Button { onEdit?(host) } label: { Label("Edit", systemImage: "pencil") }
+                Button { configService.duplicateHost(host) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                 if !host.identityFile.isEmpty && !host.isWildcard {
                     Button { TerminalService.copyKeyToHost(host, keyPath: host.identityFile) } label: {
                         Label("Copy Public Key to Server", systemImage: "paperplane.fill")

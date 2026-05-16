@@ -33,6 +33,11 @@ struct HostFormView: View {
     @State private var customTerminalPath: String = ""
     @State private var selectedGroupID: UUID?
 
+    // Per-host env vars
+    @State private var useDefaultEnv: Bool = true
+    @State private var envVarMode: EnvVarMode = .inheritAndAppend
+    @State private var hostEnvVars: [EnvVarEntry] = []
+
     private let terminalPrefs = TerminalPreferences.shared
     private var t: AppTheme { tm.current }
     private var existingID: UUID?
@@ -64,9 +69,16 @@ struct HostFormView: View {
             _extraOptionsText = State(initialValue: existing.extraOptions.map { "\($0.key) \($0.value)" }.joined(separator: "\n"))
             let prefs = TerminalPreferences.shared
             if let override = prefs.hostOverrides[existing.host] {
-                _useDefaultTerminal = State(initialValue: false)
-                _selectedTerminal = State(initialValue: override.terminal)
-                _customTerminalPath = State(initialValue: override.customAppPath ?? "")
+                if let terminal = override.terminal {
+                    _useDefaultTerminal = State(initialValue: false)
+                    _selectedTerminal   = State(initialValue: terminal)
+                    _customTerminalPath = State(initialValue: override.customAppPath ?? "")
+                }
+                if !override.envVars.isEmpty || override.envMode == .replaceAll {
+                    _useDefaultEnv  = State(initialValue: false)
+                    _envVarMode     = State(initialValue: override.envMode)
+                    _hostEnvVars    = State(initialValue: override.envVars)
+                }
             }
         }
     }
@@ -240,6 +252,40 @@ struct HostFormView: View {
                                         .font(.system(size: 12))
                                 }
                             }
+                        }
+                    }
+
+                    // Environment
+                    formSection("ENVIRONMENT") {
+                        HStack {
+                            Text("Env Vars")
+                                .font(.system(size: 12))
+                                .frame(width: 120, alignment: .trailing)
+                                .foregroundColor(t.secondary)
+                            Picker("", selection: $useDefaultEnv) {
+                                Text("Use Global Default").tag(true)
+                                Text("Override for this host").tag(false)
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
+
+                        if !useDefaultEnv {
+                            HStack {
+                                Text("Mode")
+                                    .font(.system(size: 12))
+                                    .frame(width: 120, alignment: .trailing)
+                                    .foregroundColor(t.secondary)
+                                Picker("", selection: $envVarMode) {
+                                    ForEach(EnvVarMode.allCases, id: \.self) { mode in
+                                        Text(mode.displayName).tag(mode)
+                                    }
+                                }
+                                .labelsHidden()
+                                .pickerStyle(.menu)
+                            }
+
+                            EnvVarEditorView(entries: $hostEnvVars)
                         }
                     }
 
@@ -467,15 +513,22 @@ struct HostFormView: View {
             comment: formattedComment
         )
 
-        // Save per-host terminal override
+        // Save per-host terminal + env override (both are optional; remove if everything is default)
         let alias = newHost.host
-        if useDefaultTerminal {
+        let terminalOverride: TerminalApp? = useDefaultTerminal ? nil : selectedTerminal
+        let customPath = (!useDefaultTerminal && selectedTerminal == .custom) ? customTerminalPath : nil
+        let envVars    = useDefaultEnv ? [] : hostEnvVars
+        let envMode    = useDefaultEnv ? EnvVarMode.inheritAndAppend : envVarMode
+
+        if terminalOverride == nil && envVars.isEmpty {
             terminalPrefs.removeOverride(for: alias)
         } else {
             terminalPrefs.setOverride(
-                for: alias,
-                terminal: selectedTerminal,
-                customPath: selectedTerminal == .custom ? customTerminalPath : nil
+                for:        alias,
+                terminal:   terminalOverride,
+                customPath: customPath,
+                envMode:    envMode,
+                envVars:    envVars
             )
         }
 
